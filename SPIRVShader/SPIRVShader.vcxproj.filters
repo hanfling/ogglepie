@@ -9,11 +9,11 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\data\shader\triangle.vert">
+    <CustomBuild Include="VertexShader.glsl">
       <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\data\shader\triangle.frag">
+    </CustomBuild>
+    <CustomBuild Include="FragmentShader.glsl">
       <Filter>Shaders</Filter>
-    </None>
+    </CustomBuild>
   </ItemGroup>
 </Project>

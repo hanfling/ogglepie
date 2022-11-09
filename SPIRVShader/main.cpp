@@ -20,12 +20,18 @@
 #include <algorithm>
 #include <array>
 
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
+#define GLEW_STATIC
+#include "../3rd/glew/include/GL/glew.h"
+
+#include "../3rd/glfw/WIN32/include/GLFW/glfw3.h" // Include file is identical for WIN32 and WIN64.
 
 #define GLM_FORCE_RADIANS
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include "../3rd/glm/glm/glm.hpp"
+#include "../3rd/glm/glm/gtc/matrix_transform.hpp"
+
+// SPIR-V Binaries.
+#include "CompiledShaders/VertexShader.h"
+#include "CompiledShaders/FragmentShader.h"
 
 const std::string appTitle = "OpenGL example - GL_ARB_gl_spirv";
 
@@ -39,11 +45,10 @@ struct
 class OpenGLExample
 {
 public:
-	GLuint shader;
+	GLuint Program;
+	GLuint VAO;
 	GLuint VBO[2];
-	GLuint IBO;
 	GLuint UBO;
-	uint32_t indices;
 	float zoom = -2.0f;
 	glm::vec3 rotation = glm::vec3(0.0f);
 	GLFWwindow* window;
@@ -53,7 +58,7 @@ public:
 		this->window = window;
 	}
 
-	void printShaderLog(GLuint shader)
+	void PrintShaderInfoLog( GLuint shader, const char* Label )
 	{
 		GLint result = GL_FALSE;
 		int logLength;
@@ -64,58 +69,69 @@ public:
 		{
 			GLchar* strInfoLog = new GLchar[logLength + 1];
 			glGetShaderInfoLog(shader, logLength, NULL, strInfoLog);
-			std::cout << "Shaderlog: " << strInfoLog << std::endl;
+
+			if ( logLength==1 && *strInfoLog=='\0' )
+			{
+				std::cout << "!! Single '\\0' character ShaderInfoLog (" << Label << ")" << std::endl;
+			}
+			else
+			{
+				std::cout << "ShaderInfolog (" << Label << "): " << strInfoLog << std::endl;
+			}
 		};
 	}
 
-	void printProgramLog(GLuint program)
+	void PrintProgramInfoLog(GLuint program)
 	{
 		GLint result = GL_FALSE;
 		int logLength;
 
 		glGetProgramiv(program, GL_LINK_STATUS, &result);
 		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
-		if (logLength > 0) 
+		if ( logLength>0 ) 
 		{
 			GLchar* strInfoLog = new GLchar[logLength + 1];
 			glGetProgramInfoLog(program, logLength, NULL, strInfoLog);
-			std::cout << "Programlog: " << strInfoLog << std::endl;
+
+			if ( logLength==1 && *strInfoLog=='\0' )
+			{
+				std::cout << "!! Single '\\0' character ProgramInfoLog." << std::endl;
+			}
+			else
+			{
+				std::cout << "ProgramInfoLog: " << strInfoLog << std::endl;
+			}
 		};
 	}
 
-	bool loadBinaryShader(const char *fileName, GLuint stage, GLuint binaryFormat, GLuint &shader)
+	GLint InitShader( GLenum ShaderType, const uint32_t* ShaderBinary, GLsizei ShaderBinaryLength, GLuint& Shader, const char* ShaderName )
 	{
-		std::ifstream shaderFile;
-		shaderFile.open(fileName, std::ios::binary | std::ios::ate);
-		if (shaderFile.is_open())
-		{
-			size_t size = shaderFile.tellg();
-			shaderFile.seekg(0, std::ios::beg);
-			char* bin = new char[size];
-			shaderFile.read(bin, size);
+		Shader = glCreateShader( ShaderType );
+		glObjectLabel( GL_SHADER, Shader, -1, ShaderName );
 
-			GLint status;
-			shader = glCreateShader(stage);									// Create a new shader
-			glShaderBinary(1, &shader, binaryFormat, bin, size);			// Load the binary shader file
-			glSpecializeShaderARB(shader, "main", 0, nullptr, nullptr);		// Set main entry point (required, no specialization used in this example)
-			glGetShaderiv(shader, GL_COMPILE_STATUS, &status);				// Check compilation status
-			return status;
-		}
-		else
+		glShaderBinary( 1, &Shader, GL_SHADER_BINARY_FORMAT_SPIR_V, ShaderBinary, ShaderBinaryLength );
+		glSpecializeShader( Shader, "main", 0, nullptr, nullptr );
+
+		GLint CompileStatus;
+		glGetShaderiv( Shader, GL_COMPILE_STATUS, &CompileStatus );
+		if ( CompileStatus!=GL_TRUE )
 		{
-			std::cerr << "Could not open \"" << fileName << "\"" << std::endl;
-			return false;
+			std::cerr << "Failed to compile " << ShaderName << std::endl;
 		}
+
+		PrintShaderInfoLog( Shader, ShaderName );
+
+		return CompileStatus;
 	}
 
-	GLuint loadShader(const char* vsFileName, const char* fsFileName)
+	GLuint InitProgram( const uint32_t* VertexShaderBinary, GLsizei VertexShaderBinaryLength, const uint32_t* FragmentShaderBinary, GLsizei FragmentShaderBinaryLength )
 	{
 		GLuint vertShader, fragShader;
 
 		GLint result = GL_TRUE;
 
-		result &= loadBinaryShader(vsFileName, GL_VERTEX_SHADER, GL_SHADER_BINARY_FORMAT_SPIR_V_ARB, vertShader);
-		result &= loadBinaryShader(fsFileName, GL_FRAGMENT_SHADER, GL_SHADER_BINARY_FORMAT_SPIR_V_ARB, fragShader);
+		result &= InitShader( GL_VERTEX_SHADER,   VertexShaderBinary,   VertexShaderBinaryLength,   vertShader, "VertexShader"   );
+		result &= InitShader( GL_FRAGMENT_SHADER, FragmentShaderBinary, FragmentShaderBinaryLength, fragShader, "FragmentShader" );
 
 		if (!result)
 		{
@@ -123,31 +139,26 @@ public:
 			return GL_FALSE;
 		}
 
-		std::cout << "Linking shader program" << std::endl;
+		//std::cout << "Linking shader program" << std::endl;
 		GLuint program = glCreateProgram();
-		glAttachShader(program, vertShader);
-		glAttachShader(program, fragShader);
+		glAttachShader( program, vertShader );
+		glAttachShader( program, fragShader );
 
-		// Bind vertex attributes to VBO indices
-		glBindAttribLocation(program, 0, "inPos");
-		glBindAttribLocation(program, 1, "inColor");
+		glDeleteShader( vertShader );
+		glDeleteShader( fragShader );
 
 		glLinkProgram(program);
-		printProgramLog(program);
+		PrintProgramInfoLog(program);
 
-		glDeleteShader(vertShader);
-		glDeleteShader(fragShader);
-
-		glBindBufferBase(GL_UNIFORM_BUFFER, 0, UBO);
-
-		glUseProgram(program);
+		glDetachShader( program, vertShader );
+		glDetachShader( program, fragShader );
 
 		return program;
 	}
 
 	void loadAssets()
 	{
-		shader = loadShader("../data/shader/triangle.vert.spv", "../data/shader/triangle.frag.spv");
+		Program = InitProgram( VertexShaderBinary, sizeof(VertexShaderBinary), FragmentShaderBinary, sizeof(FragmentShaderBinary) );
 	}
 
 	void updateUBO()
@@ -163,66 +174,53 @@ public:
 		uboVS.model = glm::rotate(uboVS.model, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
 		uboVS.model = glm::rotate(uboVS.model, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
 
-		glBindBuffer(GL_UNIFORM_BUFFER, UBO);
-		GLvoid* p = glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY);
-		memcpy(p, &uboVS, sizeof(uboVS));
-		glUnmapBuffer(GL_UNIFORM_BUFFER);
+		glNamedBufferSubData( UBO, 0, sizeof(uboVS), &uboVS );
 	}
 
 	void generateBuffers()
 	{
-		// Default VAO needed for OpenGL 3.3+ core profiles
-		GLuint VAO;
-		glGenVertexArrays(1, &VAO);
-		glBindVertexArray(VAO);
-
 		// Setup vertex data
-		const GLfloat vPos[] = {
+		const GLfloat vPos[] =
+		{
 			1.0f, -1.0f, 0.0f,
 			-1.0f, -1.0f, 0.0f,
 			0.0f,  1.0f, 0.0f
 		};
-		const GLfloat vCol[] = {
+		const GLfloat vCol[] =
+		{
 			1.0f, 0.0f, 0.0f,
 			0.0f, 1.0f, 0.0f,
 			0.0f, 0.0f, 1.0f
 		};
-		uint32_t vBufferSize = 9 * sizeof(float);
 
-		// Setup indices
-		std::vector<uint32_t> indexBuffer = { 0, 1, 2 };
-		indices = static_cast<uint32_t>(indexBuffer.size());
-		uint32_t iBufferSize = indices * sizeof(uint32_t);
-
-		glGenBuffers(2, VBO);
-		glGenBuffers(1, &IBO);
+		glCreateBuffers(2, VBO);
 
 		// Position
-		glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
-		glBufferData(GL_ARRAY_BUFFER, vBufferSize, &vPos, GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
-		glEnableVertexAttribArray(0);
+		glNamedBufferStorage( VBO[0], sizeof(vPos), &vPos, 0 );
 
 		// Color
-		glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
-		glBufferData(GL_ARRAY_BUFFER, vBufferSize, &vCol, GL_STATIC_DRAW);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
-		glEnableVertexAttribArray(1);
-
-		// Indices 
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, iBufferSize, indexBuffer.data(), GL_STATIC_DRAW);
+		glNamedBufferStorage( VBO[1], sizeof(vCol), &vCol, 0 );
 
 		// Uniform buffer object
-		glGenBuffers(1, &UBO);
-		glBindBuffer(GL_UNIFORM_BUFFER, UBO);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(uboVS), &uboVS, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		glCreateBuffers( 1, &UBO );
+		glNamedBufferStorage( UBO, sizeof(uboVS), &uboVS, GL_DYNAMIC_STORAGE_BIT );
 
+		// VAO.
+		glCreateVertexArrays( 1, &VAO );
+		glObjectLabel( GL_VERTEX_ARRAY, VAO, -1, "TriangleVAO" );
+
+		glEnableVertexArrayAttrib( VAO, 0);
+		glVertexArrayAttribFormat( VAO, 0, 3, GL_FLOAT, GL_FALSE, 0 );
+		glVertexArrayAttribBinding(	VAO, 0, 0 );
+		glVertexArrayVertexBuffer( VAO, 0, VBO[0], 0, 3*sizeof(GLfloat) );
+
+		glEnableVertexArrayAttrib( VAO, 1 );
+		glVertexArrayAttribFormat( VAO, 1, 3, GL_FLOAT, GL_FALSE, 0 );
+		glVertexArrayAttribBinding(	VAO, 1, 1 );
+		glVertexArrayVertexBuffer( VAO, 1, VBO[1], 0, 3*sizeof(GLfloat) );
+
+		// UBO.
 		updateUBO();
-
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-		glEnable(GL_DEPTH_TEST);
 	}
 
 	void draw(double deltaT)
@@ -230,13 +228,18 @@ public:
 		double frameTimeStart = glfwGetTime();
 
 		glClearColor(0.0f, 0.0f, 0.2f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		glEnable(GL_DEPTH_TEST);
+		glBindBufferBase( GL_UNIFORM_BUFFER, 0, UBO );
+		glUseProgram( Program );
+		glBindVertexArray( VAO );
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 
 		glfwSwapBuffers(window);
 
-		rotation.y += deltaT * 50.0f;
+		rotation.y += (float)(deltaT * 50.0f);
 		updateUBO();
 	}
 };
@@ -258,7 +261,7 @@ static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 	glViewport(0, 0, width, height);
 }
 
-int main(void)
+int main()
 {
 	glfwSetErrorCallback(error_callback);
 
@@ -266,6 +269,11 @@ int main(void)
 	{
 		exit(EXIT_FAILURE);
 	}
+
+	glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
+	glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 6 );
+	glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
+	glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
 
 	GLFWwindow* window = glfwCreateWindow(1280, 720, appTitle.c_str(), NULL, NULL);
 	
@@ -294,11 +302,11 @@ int main(void)
 		exit(-1);
 	}
 
-	std::cout << "Vendor:" << glGetString(GL_VENDOR) << std::endl;
-	std::cout << "Renderer:" << glGetString(GL_RENDERER) << std::endl;
-	std::cout << "Version:" << glGetString(GL_VERSION) << std::endl;
+	std::cout << "GL_VENDOR:   " << glGetString(GL_VENDOR  ) << std::endl;
+	std::cout << "GL_RENDERER: " << glGetString(GL_RENDERER) << std::endl;
+	std::cout << "GL_VERSION:  " << glGetString(GL_VERSION ) << std::endl;
 
-	std::cout << std::boolalpha << "SPIRV supported: " << (GLEW_ARB_gl_spirv == true) << std::endl;
+	//std::cout << std::boolalpha << "SPIRV supported: " << (GLEW_ARB_gl_spirv==GL_TRUE) << std::endl;
 
 	if (!GLEW_ARB_gl_spirv)
 	{
@@ -306,6 +314,30 @@ int main(void)
 		glfwDestroyWindow(window);
 		glfwTerminate();
 		exit(-1);
+	}
+
+	// Check whether GL_SHADER_BINARY_FORMAT_SPIR_V is listed inside GL_NUM_SHADER_BINARY_FORMATS.
+	bool HasSpirvShaderBinaryFormat = false;
+	GLint NumShaderBinaryFormats=0;
+	glGetIntegerv( GL_NUM_SHADER_BINARY_FORMATS, &NumShaderBinaryFormats );
+	if ( NumShaderBinaryFormats>0 )
+	{
+		GLint* ShaderBinaryFormats = new GLint[NumShaderBinaryFormats];
+		glGetIntegerv( GL_SHADER_BINARY_FORMATS, ShaderBinaryFormats );
+
+		for ( INT iShaderBinaryFormat=0; iShaderBinaryFormat<NumShaderBinaryFormats; iShaderBinaryFormat++ )
+		{
+			if ( ShaderBinaryFormats[iShaderBinaryFormat]==GL_SHADER_BINARY_FORMAT_SPIR_V )
+			{
+				HasSpirvShaderBinaryFormat = true;
+				break;
+			}
+		}
+	}
+	// Put a warning here, as this would have been an oversight in the ICD...
+	if ( !HasSpirvShaderBinaryFormat )
+	{
+		std::cout << "!! SHADER_BINARY_FORMAT_SPIR_V is not include in SHADER_BINARY_FORMATS." << std::endl;
 	}
 
 	glfwSwapInterval(0);
