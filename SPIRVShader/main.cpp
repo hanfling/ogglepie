@@ -211,12 +211,12 @@ public:
 
 		glEnableVertexArrayAttrib( VAO, 0);
 		glVertexArrayAttribFormat( VAO, 0, 3, GL_FLOAT, GL_FALSE, 0 );
-		glVertexArrayAttribBinding(	VAO, 0, 0 );
+		glVertexArrayAttribBinding( VAO, 0, 0 );
 		glVertexArrayVertexBuffer( VAO, 0, VBO[0], 0, 3*sizeof(GLfloat) );
 
 		glEnableVertexArrayAttrib( VAO, 1 );
 		glVertexArrayAttribFormat( VAO, 1, 3, GL_FLOAT, GL_FALSE, 0 );
-		glVertexArrayAttribBinding(	VAO, 1, 1 );
+		glVertexArrayAttribBinding( VAO, 1, 1 );
 		glVertexArrayVertexBuffer( VAO, 1, VBO[1], 0, 3*sizeof(GLfloat) );
 
 		// UBO.
