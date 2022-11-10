@@ -179,7 +179,6 @@ public:
 
 	void generateBuffers()
 	{
-		// Setup vertex data
 		const GLfloat vPos[] =
 		{
 			1.0f, -1.0f, 0.0f,
@@ -193,6 +192,7 @@ public:
 			0.0f, 0.0f, 1.0f
 		};
 
+		// Setup vertex data
 		glCreateBuffers(2, VBO);
 
 		// Position
@@ -201,23 +201,38 @@ public:
 		// Color
 		glNamedBufferStorage( VBO[1], sizeof(vCol), &vCol, 0 );
 
-		// Uniform buffer object
-		glCreateBuffers( 1, &UBO );
-		glNamedBufferStorage( UBO, sizeof(uboVS), &uboVS, GL_DYNAMIC_STORAGE_BIT );
-
 		// VAO.
 		glCreateVertexArrays( 1, &VAO );
 		glObjectLabel( GL_VERTEX_ARRAY, VAO, -1, "TriangleVAO" );
 
 		glEnableVertexArrayAttrib( VAO, 0);
+		glEnableVertexArrayAttrib( VAO, 1 );
+
+#if 1 // Makes triangle disappear on Windows AMD when launched from RenderDoc.
+		// ARB_vertex_attrib_binding style.
 		glVertexArrayAttribFormat( VAO, 0, 3, GL_FLOAT, GL_FALSE, 0 );
 		glVertexArrayAttribBinding( VAO, 0, 0 );
 		glVertexArrayVertexBuffer( VAO, 0, VBO[0], 0, 3*sizeof(GLfloat) );
 
-		glEnableVertexArrayAttrib( VAO, 1 );
 		glVertexArrayAttribFormat( VAO, 1, 3, GL_FLOAT, GL_FALSE, 0 );
 		glVertexArrayAttribBinding( VAO, 1, 1 );
 		glVertexArrayVertexBuffer( VAO, 1, VBO[1], 0, 3*sizeof(GLfloat) );
+#else // Works fine.
+		// Legacy style.
+		glBindVertexArray(VAO);
+
+		glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+
+		glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+
+		glBindVertexArray(0);
+#endif
+
+		// Uniform buffer object
+		glCreateBuffers( 1, &UBO );
+		glNamedBufferStorage( UBO, sizeof(uboVS), &uboVS, GL_DYNAMIC_STORAGE_BIT | GL_MAP_WRITE_BIT );
 
 		// UBO.
 		updateUBO();
