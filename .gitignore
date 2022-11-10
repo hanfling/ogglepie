@@ -12,9 +12,9 @@
 [Rr]elease/
 [Rr]eleases/
 x64/
-build/
+[Bb]uild/
 bld/
-[Bb]in/
+#[Bb]in/
 [Oo]bj/
 
 # Roslyn cache directories
