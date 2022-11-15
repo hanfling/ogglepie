@@ -143,15 +143,18 @@ public:
 		//std::cout << "Linking shader program" << std::endl;
 		GLuint program = glCreateProgram();
 		glAttachShader( program, vertShader );
+		glAttachShader( program, geomShader );
 		glAttachShader( program, fragShader );
 
 		glDeleteShader( vertShader );
+		glDeleteShader( geomShader );
 		glDeleteShader( fragShader );
 
 		glLinkProgram(program);
 		PrintProgramInfoLog(program);
 
 		glDetachShader( program, vertShader );
+		glDetachShader( program, geomShader );
 		glDetachShader( program, fragShader );
 
 		return program;
@@ -205,9 +208,19 @@ public:
 		glUseProgram( Program );
 		glBindVertexArray( VAO );
 
+
 		glGetError(); // Clear.
-		//glDrawArrays( GL_TRIANGLES, 0, 3 );
-		glDrawArraysInstancedBaseInstance( GL_TRIANGLES, 0, 3, 1, 0 );
+
+		//
+		// GL_INVALID_OPERATION is generated if a geometry shader is active and mode is incompatible 
+		// with the input primitive type of the geometry shader in the currently installed program object.
+		//
+
+		//glDrawArrays( GL_TRIANGLES, 0, 3 ); // GL_INVALID_OPERATION on Windows AMD.
+		//glDrawArrays( GL_TRIANGLE_FAN, 0, 3 ); // GL_INVALID_OPERATION on Windows AMD.
+		//glDrawArraysInstancedBaseInstance( GL_TRIANGLES, 0, 3, 1, 0 ); // GL_INVALID_OPERATION on Windows AMD.
+		glDrawArraysInstancedBaseInstance( GL_TRIANGLE_FAN, 0, 3, 1, 0 ); // GL_INVALID_OPERATION on Windows AMD.
+
 		GLuint DrawError = glGetError();
 		if ( DrawError!=GL_NO_ERROR )
 		{
